@@ -1,13 +1,3 @@
-````markdown
-# digiflazz-php
-
-[![Packagist](https://img.shields.io/packagist/v/andisiahaan/digiflazz-php.svg)](https://packagist.org/packages/andisiahaan/digiflazz-php)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/andisiahaan/digiflazz-php/actions/workflows/php.yml/badge.svg)](https://github.com/andisiahaan/digiflazz-php/actions)
-
-## Quick install
-
-Install the package via Composer:
 # digiflazz-php
 
 [![Packagist](https://img.shields.io/packagist/v/andisiahaan/digiflazz-php.svg)](https://packagist.org/packages/andisiahaan/digiflazz-php)
@@ -26,8 +16,9 @@ Lightweight PHP client for the Digiflazz API. This repository provides a small w
 
 Supported PHP versions: >=7.4
 
-Features
-- Simple PSR-4 autoloaded client (AndiSiahaan\Digiflazz\DigiflazzClient)
+## Features
+
+- Simple PSR-4 autoloaded client (`AndiSiahaan\\Digiflazz\\DigiflazzClient`)
 - Service classes for each functional area (Balance, PriceList, Transaction, Deposit, PLN)
 - Example scripts to run prepaid and postpaid test-cases
 - Unit tests (PHPUnit) with mocked HTTP client
@@ -55,7 +46,7 @@ $env:DIGIFLAZZ_USERNAME='your_username'
 $env:DIGIFLAZZ_APIKEY='your_api_key'
 ```
 
-Do not commit real credentials into the repository. Use `.env` locally and add it to `.gitignore`.
+Do not commit real credentials into the repository. Use a local `.env` and add it to `.gitignore`.
 
 ## Quick usage
 
@@ -63,7 +54,7 @@ Example: create client and check balance
 
 ```php
 require 'vendor/autoload.php';
-use AndiSiahaan\Digiflazz\DigiflazzClient;
+use AndiSiahaan\\Digiflazz\\DigiflazzClient;
 
 $client = new DigiflazzClient(getenv('DIGIFLAZZ_USERNAME'), getenv('DIGIFLAZZ_APIKEY'));
 $balance = $client->checkBalance();
@@ -114,7 +105,7 @@ See `examples/` for small scripts that exercise prepaid and postpaid flows:
 Run an example (PowerShell):
 
 ```powershell
-$env:DIGIFLAZZ_USERNAME='your_username'; $env:DIGIFLAZZ_APIKEY='your_api_key'; php .\examples\integration-prepaid-test.php
+$env:DIGIFLAZZ_USERNAME='your_username'; $env:DIGIFLAZZ_APIKEY='your_api_key'; php .\\examples\\integration-prepaid-test.php
 ```
 
 ## Running tests
@@ -122,7 +113,7 @@ $env:DIGIFLAZZ_USERNAME='your_username'; $env:DIGIFLAZZ_APIKEY='your_api_key'; p
 Unit tests use PHPUnit and are mocked to avoid calling the real API. Run:
 
 ```powershell
-vendor\bin\phpunit --testdox
+vendor\\bin\\phpunit --testdox
 ```
 
 ## Notes & troubleshooting
