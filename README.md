@@ -31,7 +31,7 @@ Install dependencies with Composer:
 composer install
 ```
 
-When the package is published, consumers will be able to install with:
+You able to install with:
 
 ```powershell
 composer require andisiahaan/digiflazz-php
