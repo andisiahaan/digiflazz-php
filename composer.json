@@ -2,12 +2,27 @@
   "name": "andisiahaan/digiflazz-php",
   "description": "Digiflazz API client",
   "type": "library",
+  "homepage": "https://github.com/andisiahaan/digiflazz-php",
+  "keywords": ["digiflazz", "payment", "pulsa", "pln", "api-client"],
   "license": "MIT",
   "autoload": {
     "psr-4": {
-      "Digiflazz\\": "src/"
+      "AndiSiahaan\\Digiflazz\\": "src/"
     }
   },
+  "support": {
+    "issues": "https://github.com/andisiahaan/digiflazz-php/issues",
+    "source": "https://github.com/andisiahaan/digiflazz-php"
+  },
+  "authors": [
+    {
+      "name": "Andi Saputra Siahaan",
+      "email": "andisiahaan670@gmail.com",
+      "website": "https://andipedia.com"
+    }
+  ],
+  "minimum-stability": "stable",
+  "prefer-stable": true,
   "require": {
     "php": ">=7.4",
     "guzzlehttp/guzzle": "^7.0"
