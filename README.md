@@ -14,71 +14,117 @@ composer install
 2. Require in your project:
 
 ```php
-require 'vendor/autoload.php';
+# digiflazz-php
 
-use AndiSiahaan\Digiflazz\DigiflazzClient;
+Lightweight PHP client for the Digiflazz API. This repository provides a small wrapper around Digiflazz endpoints (balance, price-list, transaction/topup, deposit, PLN inquiry/payment) and example integration scripts.
 
-$client = new DigiflazzClient('username', 'api_key');
-$response = $client->balance();
-print_r($response);
+Supported PHP versions: >=7.4
+
+Features
+- Simple PSR-4 autoloaded client (AndiSiahaan\Digiflazz\DigiflazzClient)
+- Service classes for each functional area (Balance, PriceList, Transaction, Deposit, PLN)
+- Example scripts to run prepaid and postpaid test-cases
+- Unit tests (PHPUnit) with mocked HTTP client
+
+## Installation
+
+Install dependencies with Composer:
+
+```powershell
+composer install
+```
+
+When the package is published, consumers will be able to install with:
+
+```powershell
+composer require andisiahaan/digiflazz-php
 ```
 
 ## Configuration
 
-Store credentials in environment variables (recommended) or export them before running the examples:
-
-PowerShell (one-off run):
+Provide your Digiflazz credentials via environment variables:
 
 ```powershell
-$env:DIGIFLAZZ_USERNAME='your_username'; $env:DIGIFLAZZ_APIKEY='your_api_key'; php .\examples\integration-prepaid-test.php
+$env:DIGIFLAZZ_USERNAME='your_username'
+$env:DIGIFLAZZ_APIKEY='your_api_key'
 ```
 
-Or create a local `.env` and load it in your environment (do not commit `.env`).
+Do not commit real credentials into the repository. Use `.env` locally and add it to `.gitignore`.
 
-## Usage / Examples
+## Quick usage
 
-This repository includes example integration scripts under the `examples/` folder:
-
-- `examples/integration-prepaid-test.php` — runs several prepaid test-cases.
-- `examples/integration-postpaid-test.php` — runs PLN inquiry + payment test-cases (inq-pasca / pay-pasca).
-- `examples/integration-pay-pasca-only.php` — runs pay-pasca for a set of customer numbers.
-
-Run any example with the environment variables set as shown above. Example output will be printed to the console.
-
-### Example: prepaid quickstart
+Example: create client and check balance
 
 ```php
 require 'vendor/autoload.php';
 use AndiSiahaan\Digiflazz\DigiflazzClient;
 
 $client = new DigiflazzClient(getenv('DIGIFLAZZ_USERNAME'), getenv('DIGIFLAZZ_APIKEY'));
+$balance = $client->checkBalance();
+print_r($balance);
+```
+
+Prepaid topup example
+
+```php
 $resp = $client->topup([
 	'buyer_sku_code' => 'xld10',
 	'customer_no' => '087800001230',
-	'ref_id' => 'test-123',
+	'ref_id' => 'my-ref-123',
 	'testing' => true,
 ]);
 print_r($resp);
 ```
 
+Postpaid (PLN) inquiry + payment
+
+```php
+$inq = $client->inqPasca([
+	'buyer_sku_code' => 'pln',
+	'customer_no' => '530000000001',
+	'ref_id' => 'ref-001',
+	'testing' => true,
+]);
+print_r($inq);
+
+// if payable, call payPasca()
+$pay = $client->payPasca([
+	'buyer_sku_code' => 'pln',
+	'customer_no' => '530000000001',
+	'ref_id' => 'ref-001',
+	'testing' => true,
+]);
+print_r($pay);
+```
+
+## Examples
+
+See `examples/` for small scripts that exercise prepaid and postpaid flows:
+
+- `examples/integration-prepaid-test.php` — multiple prepaid test-cases
+- `examples/integration-postpaid-test.php` — PLN inquiry + payment flows
+- `examples/integration-pay-pasca-only.php` — pay-pasca only runner
+
+Run an example (PowerShell):
+
+```powershell
+$env:DIGIFLAZZ_USERNAME='your_username'; $env:DIGIFLAZZ_APIKEY='your_api_key'; php .\examples\integration-prepaid-test.php
+```
+
 ## Running tests
 
-Unit tests use PHPUnit. Run them with:
+Unit tests use PHPUnit and are mocked to avoid calling the real API. Run:
 
 ```powershell
 vendor\bin\phpunit --testdox
 ```
 
-Note: the tests are unit/mocked tests and do not require real credentials.
+## Notes & troubleshooting
 
-## Notes & Security
+- IP whitelist: Digiflazz may require your public IP to be whitelisted for integration tests. If you see an error about IP or permission, contact Digiflazz support and provide your public IP.
+- Keep credentials out of version control. Use `.env` + `.gitignore`.
+- This client is intentionally minimal — extend or submit PRs for new endpoints.
 
-- Do not commit API keys or `.env` files into version control.
-- Integration tests that call the real API require your IP to be whitelisted by Digiflazz and valid test credentials.
-- This library is intentionally minimal and tailored for personal use; extend services as needed.
+## License
 
-## Contributing
-
-Open a PR or add issues for improvements. If you plan to run automated integration tests in CI, you must configure secrets and ensure the CI runner IP is whitelisted by the API provider.
-
-````
+MIT — see `LICENSE` file.
