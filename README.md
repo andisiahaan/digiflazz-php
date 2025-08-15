@@ -1,6 +1,18 @@
 ````markdown
 # digiflazz-php
 
+[![Packagist](https://img.shields.io/packagist/v/andisiahaan/digiflazz-php.svg)](https://packagist.org/packages/andisiahaan/digiflazz-php)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/andisiahaan/digiflazz-php/actions/workflows/php.yml/badge.svg)](https://github.com/andisiahaan/digiflazz-php/actions)
+
+## Quick install
+
+Install the package via Composer:
+
+```bash
+composer require andisiahaan/digiflazz-php
+```
+
 Digiflazz API client (personal library)
 
 ## Installation
