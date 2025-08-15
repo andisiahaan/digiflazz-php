@@ -1,7 +1,7 @@
 <?php
 
 use PHPUnit\Framework\TestCase;
-use Digiflazz\DigiflazzClient;
+use AndiSiahaan\Digiflazz\DigiflazzClient;
 
 class DigiflazzClientTest extends TestCase
 {
