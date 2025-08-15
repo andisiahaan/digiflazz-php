@@ -8,25 +8,19 @@
 ## Quick install
 
 Install the package via Composer:
+# digiflazz-php
+
+[![Packagist](https://img.shields.io/packagist/v/andisiahaan/digiflazz-php.svg)](https://packagist.org/packages/andisiahaan/digiflazz-php)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/andisiahaan/digiflazz-php/actions/workflows/php.yml/badge.svg)](https://github.com/andisiahaan/digiflazz-php/actions)
+
+## Quick install
+
+Install the package via Composer:
 
 ```bash
 composer require andisiahaan/digiflazz-php
 ```
-
-Digiflazz API client (personal library)
-
-## Installation
-
-1. Install dependencies with Composer:
-
-```powershell
-composer install
-```
-
-2. Require in your project:
-
-```php
-# digiflazz-php
 
 Lightweight PHP client for the Digiflazz API. This repository provides a small wrapper around Digiflazz endpoints (balance, price-list, transaction/topup, deposit, PLN inquiry/payment) and example integration scripts.
 
