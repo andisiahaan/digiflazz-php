@@ -1,39 +1,35 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AndiSiahaan\Digiflazz\Services;
 
-use AndiSiahaan\Digiflazz\DigiflazzClient;
-
-class BalanceService
+/**
+ * Service for checking account balance.
+ */
+class BalanceService extends AbstractService
 {
-    private DigiflazzClient $client;
-
-    public function __construct(DigiflazzClient $client)
-    {
-        $this->client = $client;
-    }
-
     /**
-     * Check account balance.
+     * Check account deposit balance.
      *
-     * @return array
+     * @return array<string, mixed> Balance data from API
      */
     public function check(): array
     {
-        // Per Digiflazz docs, cek deposit uses cmd=deposit and endpoint /v1/cek-saldo
-        $payload = [
+        $payload = $this->buildPayload('depo', [
             'cmd' => 'deposit',
-            'username' => $this->client->getUsername(),
-            'sign' => $this->client->signature('depo'),
-        ];
+        ]);
 
-    return $this->client->request($payload, 'cek-saldo');
+        return $this->request($payload, 'cek-saldo');
     }
 
     /**
-     * Check deposit (sisa deposit) via /v1/cek-saldo endpoint.
-     * Documentation requires cmd=deposit and sign = md5(username + apiKey + 'depo')
+     * Alias for check() method.
      *
-     * @return array
+     * @return array<string, mixed>
      */
+    public function getDeposit(): array
+    {
+        return $this->check();
+    }
 }

@@ -1,74 +1,235 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AndiSiahaan\Digiflazz;
 
-use GuzzleHttp\Client;
-use GuzzleHttp\Exception\GuzzleException;
+use AndiSiahaan\Digiflazz\Config\Configuration;
+use AndiSiahaan\Digiflazz\Contracts\ClientInterface;
+use AndiSiahaan\Digiflazz\Contracts\HttpClientInterface;
+use AndiSiahaan\Digiflazz\Exceptions\ApiException;
 use AndiSiahaan\Digiflazz\Exceptions\DigiflazzException;
-use AndiSiahaan\Digiflazz\Exceptions\HttpException;
+use AndiSiahaan\Digiflazz\Http\GuzzleHttpClient;
+use AndiSiahaan\Digiflazz\Services\BalanceService;
+use AndiSiahaan\Digiflazz\Services\DepositService;
+use AndiSiahaan\Digiflazz\Services\PlnService;
+use AndiSiahaan\Digiflazz\Services\PriceListService;
+use AndiSiahaan\Digiflazz\Services\TransactionService;
+use AndiSiahaan\Digiflazz\Support\Signature;
 
-class DigiflazzClient
+/**
+ * Main Digiflazz API Client.
+ *
+ * Provides access to all Digiflazz API services through a unified interface.
+ *
+ * @example
+ * // Create client
+ * $client = new DigiflazzClient('username', 'api_key');
+ *
+ * // Use services
+ * $balance = $client->balance()->check();
+ * $priceList = $client->priceList()->prepaid();
+ *
+ * // Or use convenience methods
+ * $balance = $client->checkBalance();
+ */
+class DigiflazzClient implements ClientInterface
 {
-    private Client $http;
-    private string $username;
-    private string $apiKey;
-    // include API version in base URI so services can call relative paths
-    private string $baseUri = 'https://api.digiflazz.com/v1/';
+    private Configuration $config;
+    private HttpClientInterface $http;
+    private Signature $signature;
 
-    public function __construct(string $username, string $apiKey, array $options = [])
-    {
-        $this->username = $username;
-        $this->apiKey = $apiKey;
-        $this->http = new Client(array_merge(['base_uri' => $this->baseUri, 'timeout' => 10.0], $options));
-    }
-
-    // ----------------------
-    // Accessors / helpers
-    // ----------------------
-    public function getUsername(): string
-    {
-        return $this->username;
-    }
-
-    public function getApiKey(): string
-    {
-        return $this->apiKey;
-    }
+    /** @var array<string, object> Cached service instances */
+    private array $services = [];
 
     /**
-     * Create service instances
+     * Create a new Digiflazz client.
+     *
+     * @param string|Configuration $usernameOrConfig Username or Configuration object
+     * @param string|null $apiKey API key (required if first param is username)
+     * @param array<string, mixed> $options Additional options (base_uri, timeout, etc.)
      */
-    public function balance(): \AndiSiahaan\Digiflazz\Services\BalanceService
-    {
-        return new \AndiSiahaan\Digiflazz\Services\BalanceService($this);
-    }
+    public function __construct(
+        string|Configuration $usernameOrConfig,
+        ?string $apiKey = null,
+        array $options = [],
+    ) {
+        if ($usernameOrConfig instanceof Configuration) {
+            $this->config = $usernameOrConfig;
+        } else {
+            if ($apiKey === null) {
+                throw new \InvalidArgumentException('API key is required when passing username string');
+            }
 
-    public function transaction(): \AndiSiahaan\Digiflazz\Services\TransactionService
-    {
-        return new \AndiSiahaan\Digiflazz\Services\TransactionService($this);
-    }
+            $this->config = new Configuration(
+                username: $usernameOrConfig,
+                apiKey: $apiKey,
+                baseUri: $options['base_uri'] ?? Configuration::DEFAULT_BASE_URI,
+                timeout: $options['timeout'] ?? Configuration::DEFAULT_TIMEOUT,
+                verifySsl: $options['verify'] ?? true,
+                httpOptions: $options,
+            );
+        }
 
-    public function priceList(): \AndiSiahaan\Digiflazz\Services\PriceListService
-    {
-        return new \AndiSiahaan\Digiflazz\Services\PriceListService($this);
-    }
-
-    public function deposit(): \AndiSiahaan\Digiflazz\Services\DepositService
-    {
-        return new \AndiSiahaan\Digiflazz\Services\DepositService($this);
+        $this->http = new GuzzleHttpClient($this->config);
+        $this->signature = new Signature(
+            $this->config->getUsername(),
+            $this->config->getApiKey(),
+        );
     }
 
     /**
-     * Convenience: direct call to check balance
+     * Create client from environment variables.
+     *
+     * @param string $usernameEnvKey Environment variable for username
+     * @param string $apiKeyEnvKey Environment variable for API key
+     */
+    public static function fromEnvironment(
+        string $usernameEnvKey = 'DIGIFLAZZ_USERNAME',
+        string $apiKeyEnvKey = 'DIGIFLAZZ_APIKEY',
+    ): self {
+        return new self(Configuration::fromEnvironment($usernameEnvKey, $apiKeyEnvKey));
+    }
+
+    // ==========================================
+    // Contract Implementation
+    // ==========================================
+
+    /**
+     * @inheritdoc
+     */
+    public function getConfiguration(): Configuration
+    {
+        return $this->config;
+    }
+
+    /**
+     * Generate signature for API request.
+     *
+     * @param string $command Command/reference for signature
+     */
+    public function signature(string $command): string
+    {
+        return $this->signature->generate($command);
+    }
+
+    /**
+     * Send a request to the API.
+     *
+     * @param array<string, mixed> $payload Request payload
+     * @param string $endpoint API endpoint path
+     * @return array<string, mixed> Decoded response
+     * @throws DigiflazzException When request fails
+     */
+    public function request(array $payload, string $endpoint = ''): array
+    {
+        $response = $this->http->post($endpoint, [
+            'json' => $payload,
+        ]);
+
+        $body = (string) $response->getBody();
+        $json = json_decode($body, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new DigiflazzException('Invalid JSON response: ' . json_last_error_msg());
+        }
+
+        // Check for API error in response
+        if ($this->isErrorResponse($json)) {
+            throw ApiException::fromResponse($json);
+        }
+
+        return $json;
+    }
+
+    // ==========================================
+    // Service Accessors
+    // ==========================================
+
+    /**
+     * Get the Balance service.
+     */
+    public function balance(): BalanceService
+    {
+        if (!isset($this->services[BalanceService::class])) {
+            $this->services[BalanceService::class] = new BalanceService($this);
+        }
+
+        /** @var BalanceService */
+        return $this->services[BalanceService::class];
+    }
+
+    /**
+     * Get the Transaction service.
+     */
+    public function transaction(): TransactionService
+    {
+        if (!isset($this->services[TransactionService::class])) {
+            $this->services[TransactionService::class] = new TransactionService($this);
+        }
+
+        /** @var TransactionService */
+        return $this->services[TransactionService::class];
+    }
+
+    /**
+     * Get the Price List service.
+     */
+    public function priceList(): PriceListService
+    {
+        if (!isset($this->services[PriceListService::class])) {
+            $this->services[PriceListService::class] = new PriceListService($this);
+        }
+
+        /** @var PriceListService */
+        return $this->services[PriceListService::class];
+    }
+
+    /**
+     * Get the Deposit service.
+     */
+    public function deposit(): DepositService
+    {
+        if (!isset($this->services[DepositService::class])) {
+            $this->services[DepositService::class] = new DepositService($this);
+        }
+
+        /** @var DepositService */
+        return $this->services[DepositService::class];
+    }
+
+    /**
+     * Get the PLN service.
+     */
+    public function pln(): PlnService
+    {
+        if (!isset($this->services[PlnService::class])) {
+            $this->services[PlnService::class] = new PlnService($this);
+        }
+
+        /** @var PlnService */
+        return $this->services[PlnService::class];
+    }
+
+    // ==========================================
+    // Convenience Methods
+    // ==========================================
+
+    /**
+     * Check account balance (convenience method).
+     *
+     * @return array<string, mixed>
      */
     public function checkBalance(): array
     {
-    // Digiflazz uses cmd="deposit" on /v1/cek-saldo to return remaining deposit.
-    return $this->balance()->check();
+        return $this->balance()->check();
     }
 
     /**
-     * Convenience: get prepaid price list
+     * Get prepaid price list (convenience method).
+     *
+     * @param array<string, mixed> $filters
+     * @return array<string, mixed>
      */
     public function priceListPrepaid(array $filters = []): array
     {
@@ -76,7 +237,10 @@ class DigiflazzClient
     }
 
     /**
-     * Convenience: get pascabayar price list
+     * Get postpaid price list (convenience method).
+     *
+     * @param array<string, mixed> $filters
+     * @return array<string, mixed>
      */
     public function priceListPasca(array $filters = []): array
     {
@@ -84,7 +248,10 @@ class DigiflazzClient
     }
 
     /**
-     * Convenience: request deposit ticket
+     * Create deposit request (convenience method).
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
      */
     public function requestDeposit(array $data): array
     {
@@ -92,7 +259,10 @@ class DigiflazzClient
     }
 
     /**
-     * Convenience: create topup transaction
+     * Create topup transaction (convenience method).
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     public function topup(array $params): array
     {
@@ -100,7 +270,10 @@ class DigiflazzClient
     }
 
     /**
-     * Convenience: inquiry pascabayar (cek tagihan)
+     * Inquiry postpaid bill (convenience method).
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     public function inqPasca(array $params): array
     {
@@ -108,7 +281,10 @@ class DigiflazzClient
     }
 
     /**
-     * Convenience: pay pascabayar (pay-pasca)
+     * Pay postpaid bill (convenience method).
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     public function payPasca(array $params): array
     {
@@ -116,7 +292,10 @@ class DigiflazzClient
     }
 
     /**
-     * Convenience: check prepaid status by resending topup with same ref_id
+     * Check prepaid transaction status (convenience method).
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     public function checkPrepaidStatus(array $params): array
     {
@@ -124,54 +303,54 @@ class DigiflazzClient
     }
 
     /**
-     * Convenience: check postpaid status (status-pasca)
+     * Check postpaid transaction status (convenience method).
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     public function statusPasca(array $params): array
     {
         return $this->transaction()->statusPasca($params);
     }
 
-    public function pln(): \AndiSiahaan\Digiflazz\Services\PlnService
-    {
-        return new \AndiSiahaan\Digiflazz\Services\PlnService($this);
-    }
-
+    /**
+     * PLN customer inquiry (convenience method).
+     *
+     * @param string $customerNo PLN customer number
+     * @return array<string, mixed>
+     */
     public function inquiryPln(string $customerNo): array
     {
         return $this->pln()->inquiry($customerNo);
     }
 
-    public function signature(string $cmd): string
-    {
-        return md5($this->username . $this->apiKey . $cmd);
-    }
+    // ==========================================
+    // Internal Helpers
+    // ==========================================
 
     /**
-     * Low-level request wrapper used by services.
+     * Check if an API response indicates an error.
      *
-     * @param array $payload
-     * @param string $path endpoint path (relative to base URI). Default is empty which posts to base URI (e.g. https://api.digiflazz.com/v1/).
-     * @internal
+     * @param array<string, mixed> $response
      */
-    public function request(array $payload, string $path = ''): array
+    private function isErrorResponse(array $response): bool
     {
-        try {
-        // Guzzle will resolve relative $path against base_uri
-            $response = $this->http->post($path, [
-                'json' => $payload,
-            ]);
+        // Check for explicit error indicators
+        $data = $response['data'] ?? $response;
 
-            $body = (string)$response->getBody();
-            $json = json_decode($body, true);
-
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new DigiflazzException('Invalid JSON response: ' . json_last_error_msg());
+        // RC (Response Code) != 00 usually means error
+        if (isset($data['rc']) && $data['rc'] !== '00') {
+            // Status 'Sukses' or 'Pending' are not errors
+            if (isset($data['status'])) {
+                $status = strtolower($data['status']);
+                if (in_array($status, ['sukses', 'pending'], true)) {
+                    return false;
+                }
             }
 
-            return $json;
-        } catch (GuzzleException $e) {
-            // Wrap Guzzle exceptions in a library-specific exception
-            throw new HttpException('HTTP error: ' . $e->getMessage(), null, 0, $e);
+            return true;
         }
+
+        return false;
     }
 }

@@ -1,173 +1,204 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AndiSiahaan\Digiflazz\Services;
 
-use AndiSiahaan\Digiflazz\DigiflazzClient;
-
-class TransactionService
+/**
+ * Service for transaction operations (topup, inquiry, payment).
+ *
+ * Handles both prepaid and postpaid (pascabayar) transactions.
+ */
+class TransactionService extends AbstractService
 {
-    private DigiflazzClient $client;
-
-    public function __construct(DigiflazzClient $client)
-    {
-        $this->client = $client;
-    }
+    private const REQUIRED_TRANSACTION = ['buyer_sku_code', 'customer_no', 'ref_id'];
 
     /**
-     * Create a transaction (topup) - minimal example.
+     * Create a prepaid transaction (topup).
      *
-     * @param array $params expects keys: buyer_sku_code, customer_no, ref_id, optional testing, max_price, cb_url, allow_dot
-     * @return array
+     * @param array<string, mixed> $params Transaction parameters
+     *   - buyer_sku_code: (required) Product SKU code
+     *   - customer_no: (required) Customer phone number
+     *   - ref_id: (required) Unique reference ID
+     *   - testing: (optional) Test mode flag
+     *   - max_price: (optional) Maximum price limit
+     *   - cb_url: (optional) Callback URL
+     *   - allow_dot: (optional) Allow dot in customer_no
+     * @return array<string, mixed> Transaction response
      */
     public function create(array $params): array
     {
-        $required = ['buyer_sku_code', 'customer_no', 'ref_id'];
-        foreach ($required as $key) {
-            if (empty($params[$key])) {
-                throw new \InvalidArgumentException(sprintf('Missing required parameter: %s', $key));
-            }
-        }
+        $this->validateRequired($params, self::REQUIRED_TRANSACTION);
 
-        // sign must be md5(username + apiKey + ref_id)
-        $refId = (string)$params['ref_id'];
+        $refId = (string) $params['ref_id'];
 
-        $payload = array_merge([
-            'username' => $this->client->getUsername(),
-            'buyer_sku_code' => $params['buyer_sku_code'],
-            'customer_no' => $params['customer_no'],
-            'ref_id' => $refId,
-            'sign' => $this->client->signature($refId),
-        ], $params);
+        $payload = $this->buildPayload($refId, $params);
 
-        // Optional: testing, max_price, cb_url, allow_dot
-        return $this->client->request($payload, 'transaction');
-    }
-
-    public function status(string $transactionId): array
-    {
-        // Backwards compatibility: keep signature but prefer re-sending topup per Digiflazz docs
-        throw new \BadMethodCallException('Use statusByRef(array $params) that resends topup with the same ref_id to check prepaid status.');
+        return $this->request($payload, 'transaction');
     }
 
     /**
-     * Check prepaid status by resending topup with same ref_id (per Digiflazz docs).
-     * Warning: do not check status for transactions older than 90 days (may create a new transaction).
+     * Alias for create() - Create a topup transaction.
      *
-     * Required params: buyer_sku_code, customer_no, ref_id
-     * Optional: testing, max_price, cb_url, allow_dot
+     * @param string $skuCode Product SKU code
+     * @param string $customerNo Customer phone number
+     * @param string $refId Unique reference ID
+     * @param bool $testing Test mode flag
+     * @return array<string, mixed>
+     */
+    public function topup(
+        string $skuCode,
+        string $customerNo,
+        string $refId,
+        bool $testing = false,
+    ): array {
+        return $this->create([
+            'buyer_sku_code' => $skuCode,
+            'customer_no' => $customerNo,
+            'ref_id' => $refId,
+            'testing' => $testing,
+        ]);
+    }
+
+    /**
+     * Check prepaid transaction status by resending with same ref_id.
      *
-     * @param array $params
-     * @return array
+     * Warning: Do not check status for transactions older than 90 days.
+     *
+     * @param array<string, mixed> $params Same parameters as create()
+     * @return array<string, mixed> Transaction status
      */
     public function statusByRef(array $params): array
     {
-        $required = ['buyer_sku_code', 'customer_no', 'ref_id'];
-        foreach ($required as $key) {
-            if (empty($params[$key])) {
-                throw new \InvalidArgumentException(sprintf('Missing required parameter for status check: %s', $key));
-            }
-        }
+        $this->validateRequired($params, self::REQUIRED_TRANSACTION);
 
-        $refId = (string)$params['ref_id'];
+        $refId = (string) $params['ref_id'];
 
-        $payload = array_merge([
-            'username' => $this->client->getUsername(),
-            'buyer_sku_code' => $params['buyer_sku_code'],
-            'customer_no' => $params['customer_no'],
-            'ref_id' => $refId,
-            'sign' => $this->client->signature($refId),
-        ], $params);
+        $payload = $this->buildPayload($refId, $params);
 
-        return $this->client->request($payload, 'transaction');
+        return $this->request($payload, 'transaction');
     }
 
     /**
-     * Inquiry for pascabayar (cek tagihan) using commands = inq-pasca
-     * Expected params: buyer_sku_code, customer_no, ref_id
+     * Postpaid inquiry (cek tagihan).
      *
-     * @param array $params
-     * @return array
+     * @param array<string, mixed> $params Inquiry parameters
+     *   - buyer_sku_code: (required) Product SKU code (e.g., 'pln')
+     *   - customer_no: (required) Customer ID number
+     *   - ref_id: (required) Unique reference ID
+     *   - testing: (optional) Test mode flag
+     * @return array<string, mixed> Inquiry response with bill details
      */
     public function inqPasca(array $params): array
     {
-        $required = ['buyer_sku_code', 'customer_no', 'ref_id'];
-        foreach ($required as $key) {
-            if (empty($params[$key])) {
-                throw new \InvalidArgumentException(sprintf('Missing required parameter for inq-pasca: %s', $key));
-            }
-        }
+        $this->validateRequired($params, self::REQUIRED_TRANSACTION);
 
-        $refId = (string)$params['ref_id'];
+        $refId = (string) $params['ref_id'];
 
-        $payload = array_merge([
+        $payload = $this->buildPayload($refId, array_merge([
             'commands' => 'inq-pasca',
-            'username' => $this->client->getUsername(),
-            'buyer_sku_code' => $params['buyer_sku_code'],
-            'customer_no' => $params['customer_no'],
-            'ref_id' => $refId,
-            'sign' => $this->client->signature($refId),
-        ], $params);
+        ], $params));
 
-        return $this->client->request($payload, 'transaction');
+        return $this->request($payload, 'transaction');
     }
 
     /**
-     * Pay pascabayar (pay-pasca)
-     * Expected params: buyer_sku_code, customer_no, ref_id
+     * Alias for inqPasca() - Postpaid inquiry.
      *
-     * @param array $params
-     * @return array
+     * @param string $skuCode Product SKU code
+     * @param string $customerNo Customer ID number
+     * @param string $refId Unique reference ID
+     * @param bool $testing Test mode flag
+     * @return array<string, mixed>
+     */
+    public function inquiry(
+        string $skuCode,
+        string $customerNo,
+        string $refId,
+        bool $testing = false,
+    ): array {
+        return $this->inqPasca([
+            'buyer_sku_code' => $skuCode,
+            'customer_no' => $customerNo,
+            'ref_id' => $refId,
+            'testing' => $testing,
+        ]);
+    }
+
+    /**
+     * Postpaid payment (pay-pasca).
+     *
+     * @param array<string, mixed> $params Payment parameters
+     *   - buyer_sku_code: (required) Product SKU code
+     *   - customer_no: (required) Customer ID number
+     *   - ref_id: (required) Same ref_id from inquiry
+     *   - testing: (optional) Test mode flag
+     * @return array<string, mixed> Payment response
      */
     public function payPasca(array $params): array
     {
-        $required = ['buyer_sku_code', 'customer_no', 'ref_id'];
-        foreach ($required as $key) {
-            if (empty($params[$key])) {
-                throw new \InvalidArgumentException(sprintf('Missing required parameter for pay-pasca: %s', $key));
-            }
-        }
+        $this->validateRequired($params, self::REQUIRED_TRANSACTION);
 
-        $refId = (string)$params['ref_id'];
+        $refId = (string) $params['ref_id'];
 
-        $payload = array_merge([
+        $payload = $this->buildPayload($refId, array_merge([
             'commands' => 'pay-pasca',
-            'username' => $this->client->getUsername(),
-            'buyer_sku_code' => $params['buyer_sku_code'],
-            'customer_no' => $params['customer_no'],
-            'ref_id' => $refId,
-            'sign' => $this->client->signature($refId),
-        ], $params);
+        ], $params));
 
-        return $this->client->request($payload, 'transaction');
+        return $this->request($payload, 'transaction');
     }
 
     /**
-     * Check postpaid status using commands = status-pasca
-     * Required params: buyer_sku_code, customer_no, ref_id
+     * Alias for payPasca() - Postpaid payment.
      *
-     * @param array $params
-     * @return array
+     * @param string $skuCode Product SKU code
+     * @param string $customerNo Customer ID number
+     * @param string $refId Same ref_id from inquiry
+     * @param bool $testing Test mode flag
+     * @return array<string, mixed>
+     */
+    public function pay(
+        string $skuCode,
+        string $customerNo,
+        string $refId,
+        bool $testing = false,
+    ): array {
+        return $this->payPasca([
+            'buyer_sku_code' => $skuCode,
+            'customer_no' => $customerNo,
+            'ref_id' => $refId,
+            'testing' => $testing,
+        ]);
+    }
+
+    /**
+     * Check postpaid transaction status.
+     *
+     * @param array<string, mixed> $params Status check parameters
+     * @return array<string, mixed> Status response
      */
     public function statusPasca(array $params): array
     {
-        $required = ['buyer_sku_code', 'customer_no', 'ref_id'];
-        foreach ($required as $key) {
-            if (empty($params[$key])) {
-                throw new \InvalidArgumentException(sprintf('Missing required parameter for status-pasca: %s', $key));
-            }
-        }
+        $this->validateRequired($params, self::REQUIRED_TRANSACTION);
 
-        $refId = (string)$params['ref_id'];
+        $refId = (string) $params['ref_id'];
 
-        $payload = array_merge([
+        $payload = $this->buildPayload($refId, array_merge([
             'commands' => 'status-pasca',
-            'username' => $this->client->getUsername(),
-            'buyer_sku_code' => $params['buyer_sku_code'],
-            'customer_no' => $params['customer_no'],
-            'ref_id' => $refId,
-            'sign' => $this->client->signature($refId),
-        ], $params);
+        ], $params));
 
-        return $this->client->request($payload, 'transaction');
+        return $this->request($payload, 'transaction');
+    }
+
+    /**
+     * Generate a unique reference ID.
+     *
+     * @param string $prefix Optional prefix
+     */
+    public static function generateRefId(string $prefix = ''): string
+    {
+        $unique = uniqid($prefix, true);
+
+        return str_replace('.', '', $unique);
     }
 }

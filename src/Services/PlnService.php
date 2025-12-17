@@ -1,36 +1,47 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AndiSiahaan\Digiflazz\Services;
 
-use AndiSiahaan\Digiflazz\DigiflazzClient;
-
-class PlnService
+/**
+ * Service for PLN (electricity) operations.
+ */
+class PlnService extends AbstractService
 {
-    private DigiflazzClient $client;
-
-    public function __construct(DigiflazzClient $client)
-    {
-        $this->client = $client;
-    }
-
     /**
-     * Inquiry PLN customer validation
+     * Inquiry PLN customer validation.
      *
-     * @param string $customerNo
-     * @return array
+     * @param string $customerNo PLN customer number (ID Pelanggan)
+     * @return array<string, mixed> Customer data from API
      */
     public function inquiry(string $customerNo): array
     {
-        if (trim($customerNo) === '') {
-            throw new \InvalidArgumentException('customerNo is required');
-        }
+        $this->validateNotEmpty($customerNo, 'customer_no');
+        $this->validateNumeric($customerNo, 'customer_no');
 
-        $payload = [
-            'username' => $this->client->getUsername(),
+        $payload = $this->buildPayload($customerNo, [
             'customer_no' => $customerNo,
-            'sign' => $this->client->signature($customerNo),
-        ];
+        ]);
 
-        return $this->client->request($payload, 'inquiry-pln');
+        return $this->request($payload, 'inquiry-pln');
+    }
+
+    /**
+     * Check if a customer number is valid for PLN.
+     *
+     * @param string $customerNo PLN customer number
+     * @return bool True if valid
+     */
+    public function isValidCustomer(string $customerNo): bool
+    {
+        try {
+            $result = $this->inquiry($customerNo);
+
+            return isset($result['data']['customer_name'])
+                && $result['data']['customer_name'] !== '';
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

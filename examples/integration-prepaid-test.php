@@ -1,53 +1,82 @@
 <?php
 
+/**
+ * Prepaid Transaction Example
+ *
+ * Examples of prepaid topup transactions with the Digiflazz API.
+ */
+
 require __DIR__ . '/../vendor/autoload.php';
 
 use AndiSiahaan\Digiflazz\DigiflazzClient;
+use AndiSiahaan\Digiflazz\Exceptions\ApiException;
+use AndiSiahaan\Digiflazz\Exceptions\DigiflazzException;
+use AndiSiahaan\Digiflazz\Exceptions\ValidationException;
+use AndiSiahaan\Digiflazz\Services\TransactionService;
 
-// Credentials provided by user (use environment variables or replace with your credentials)
-$username = getenv('DIGIFLAZZ_USERNAME') ?: 'your_username';
-$apiKey = getenv('DIGIFLAZZ_APIKEY') ?: 'your_api_key';
-
-$client = new DigiflazzClient($username, $apiKey);
-
-$tests = [
-    ['buyer_sku_code' => 'xld10', 'customer_no' => '087800001230', 'expect' => 'Sukses'],
-    ['buyer_sku_code' => 'xld10', 'customer_no' => '087800001232', 'expect' => 'Gagal'],
-    ['buyer_sku_code' => 'xld10', 'customer_no' => '087800001233', 'expect' => 'Pending -> Callback Sukses'],
-    ['buyer_sku_code' => 'xld10', 'customer_no' => '087800001234', 'expect' => 'Pending -> Callback Gagal'],
-];
-
-foreach ($tests as $i => $t) {
-    $refId = 'test-' . time() . '-' . ($i + 1);
-    $payload = [
-        'buyer_sku_code' => $t['buyer_sku_code'],
-        'customer_no' => $t['customer_no'],
-        'ref_id' => $refId,
-        // use testing flag to avoid real charge if supported
-        'testing' => true,
-    ];
-
-    echo "\n=== Test #" . ($i + 1) . " (expect: " . $t['expect'] . ") ===\n";
-    try {
-        $resp = $client->topup($payload);
-        echo json_encode($resp, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
-    } catch (Exception $e) {
-        echo "Error (" . get_class($e) . "): " . $e->getMessage() . "\n";
-
-        // If this was an HTTP error with response body, print it for debugging
-        if (method_exists($e, 'getResponse')) {
-            $resp = $e->getResponse();
-            if ($resp) {
-                echo "HTTP status: " . $resp->getStatusCode() . "\n";
-                // read full stream contents
-                $body = $resp->getBody()->getContents();
-                echo "HTTP body: " . $body . "\n";
-            }
-        }
-
-        // Print the JSON payload that was sent
-        echo "Payload sent: " . json_encode($payload, JSON_UNESCAPED_SLASHES) . "\n";
-    }
+try {
+    $client = DigiflazzClient::fromEnvironment();
+} catch (\RuntimeException $e) {
+    echo "Please set DIGIFLAZZ_USERNAME and DIGIFLAZZ_APIKEY environment variables.\n";
+    exit(1);
 }
 
-echo "\nDone.\n";
+// Test cases for prepaid transactions
+$testCases = [
+    [
+        'name' => 'XL 10rb - Success',
+        'buyer_sku_code' => 'xld10',
+        'customer_no' => '087800001230',
+        'testing' => true,
+    ],
+    [
+        'name' => 'Telkomsel - Pending',
+        'buyer_sku_code' => 'htel5',
+        'customer_no' => '081234567890',
+        'testing' => true,
+    ],
+];
+
+echo "=== Prepaid Transaction Tests ===\n\n";
+
+foreach ($testCases as $index => $testCase) {
+    echo sprintf("Test #%d: %s\n", $index + 1, $testCase['name']);
+    echo str_repeat('-', 40) . "\n";
+
+    try {
+        // Generate unique reference ID
+        $refId = TransactionService::generateRefId('TEST');
+
+        // Create transaction using typed method
+        $result = $client->transaction()->topup(
+            skuCode: $testCase['buyer_sku_code'],
+            customerNo: $testCase['customer_no'],
+            refId: $refId,
+            testing: $testCase['testing'],
+        );
+
+        echo "Status: " . ($result['data']['status'] ?? 'Unknown') . "\n";
+        echo "Ref ID: " . $refId . "\n";
+        echo "SN: " . ($result['data']['sn'] ?? 'N/A') . "\n";
+        echo "Price: Rp " . number_format($result['data']['price'] ?? 0) . "\n";
+
+    } catch (ValidationException $e) {
+        echo "Validation Error: " . $e->getMessage() . "\n";
+        foreach ($e->getErrors() as $field => $error) {
+            echo "  - {$field}: {$error}\n";
+        }
+    } catch (ApiException $e) {
+        echo "API Error: " . $e->getMessage() . "\n";
+        echo "Error Code: " . ($e->getErrorCode() ?? 'N/A') . "\n";
+
+        if ($e->isRetryable()) {
+            echo "(This error is retryable)\n";
+        }
+    } catch (DigiflazzException $e) {
+        echo "Error: " . $e->getMessage() . "\n";
+    }
+
+    echo "\n";
+}
+
+echo "=== Done ===\n";

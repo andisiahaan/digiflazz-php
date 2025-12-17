@@ -1,127 +1,301 @@
-# digiflazz-php
+# Digiflazz PHP
 
-[![Packagist](https://img.shields.io/packagist/v/andisiahaan/digiflazz-php.svg)](https://packagist.org/packages/andisiahaan/digiflazz-php)
+[![Packagist Version](https://img.shields.io/packagist/v/andisiahaan/digiflazz-php.svg)](https://packagist.org/packages/andisiahaan/digiflazz-php)
+[![PHP Version](https://img.shields.io/packagist/php-v/andisiahaan/digiflazz-php.svg)](https://packagist.org/packages/andisiahaan/digiflazz-php)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/andisiahaan/digiflazz-php/actions/workflows/php.yml/badge.svg)](https://github.com/andisiahaan/digiflazz-php/actions)
+[![PHPStan Level](https://img.shields.io/badge/PHPStan-level%208-brightgreen.svg)](https://phpstan.org/)
 
-## Quick install
+Modern PHP client for the Digiflazz API. Supports prepaid topup, postpaid bill payment, PLN inquiry, and more.
 
-Install the package via Composer:
+## Requirements
+
+- PHP 8.1 or higher
+- ext-json
+- Guzzle 7.0+
+
+## Installation
 
 ```bash
 composer require andisiahaan/digiflazz-php
 ```
 
-Lightweight PHP client for the Digiflazz API. This repository provides a small wrapper around Digiflazz endpoints (balance, price-list, transaction/topup, deposit, PLN inquiry/payment) and example integration scripts.
+## Quick Start
 
-Supported PHP versions: >=7.4
+```php
+use AndiSiahaan\Digiflazz\DigiflazzClient;
 
-## Features
+// Create client with credentials
+$client = new DigiflazzClient('your_username', 'your_api_key');
 
-- Simple PSR-4 autoloaded client (`AndiSiahaan\\Digiflazz\\DigiflazzClient`)
-- Service classes for each functional area (Balance, PriceList, Transaction, Deposit, PLN)
-- Example scripts to run prepaid and postpaid test-cases
-- Unit tests (PHPUnit) with mocked HTTP client
+// Check balance
+$balance = $client->checkBalance();
+print_r($balance);
 
-## Installation
-
-Install dependencies with Composer:
-
-```powershell
-composer install
-```
-
-You able to install with:
-
-```powershell
-composer require andisiahaan/digiflazz-php
+// Or create from environment variables
+$client = DigiflazzClient::fromEnvironment();
 ```
 
 ## Configuration
 
-Provide your Digiflazz credentials via environment variables:
+### Using Environment Variables
 
-```powershell
+Set your credentials:
+
+```bash
+# Linux/macOS
+export DIGIFLAZZ_USERNAME='your_username'
+export DIGIFLAZZ_APIKEY='your_api_key'
+
+# PowerShell
 $env:DIGIFLAZZ_USERNAME='your_username'
 $env:DIGIFLAZZ_APIKEY='your_api_key'
 ```
 
-Do not commit real credentials into the repository. Use a local `.env` and add it to `.gitignore`.
-
-## Quick usage
-
-Example: create client and check balance
+Then:
 
 ```php
-require 'vendor/autoload.php';
-use AndiSiahaan\\Digiflazz\\DigiflazzClient;
+$client = DigiflazzClient::fromEnvironment();
+```
 
-$client = new DigiflazzClient(getenv('DIGIFLAZZ_USERNAME'), getenv('DIGIFLAZZ_APIKEY'));
+### Using Configuration Object
+
+```php
+use AndiSiahaan\Digiflazz\Config\Configuration;
+
+$config = new Configuration(
+    username: 'your_username',
+    apiKey: 'your_api_key',
+    timeout: 30.0,
+    verifySsl: true,
+);
+
+$client = new DigiflazzClient($config);
+```
+
+## Usage
+
+### Check Balance
+
+```php
 $balance = $client->checkBalance();
-print_r($balance);
+// or
+$balance = $client->balance()->check();
 ```
 
-Prepaid topup example
+### Price List
 
 ```php
-$resp = $client->topup([
-	'buyer_sku_code' => 'xld10',
-	'customer_no' => '087800001230',
-	'ref_id' => 'my-ref-123',
-	'testing' => true,
+// Prepaid products
+$prepaid = $client->priceListPrepaid();
+
+// Postpaid products
+$postpaid = $client->priceListPasca();
+
+// With filters
+$filtered = $client->priceList()->prepaid([
+    'category' => 'Pulsa',
+    'brand' => 'TELKOMSEL',
 ]);
-print_r($resp);
+
+// Get all at once
+$all = $client->priceList()->all();
 ```
 
-Postpaid (PLN) inquiry + payment
+### Prepaid Transaction (Topup)
 
 ```php
-$inq = $client->inqPasca([
-	'buyer_sku_code' => 'pln',
-	'customer_no' => '530000000001',
-	'ref_id' => 'ref-001',
-	'testing' => true,
+// Using array
+$result = $client->topup([
+    'buyer_sku_code' => 'xld10',
+    'customer_no' => '087800001230',
+    'ref_id' => 'unique-ref-123',
+    'testing' => true, // Use sandbox
 ]);
-print_r($inq);
 
-// if payable, call payPasca()
-$pay = $client->payPasca([
-	'buyer_sku_code' => 'pln',
-	'customer_no' => '530000000001',
-	'ref_id' => 'ref-001',
-	'testing' => true,
+// Using typed method
+$result = $client->transaction()->topup(
+    skuCode: 'xld10',
+    customerNo: '087800001230',
+    refId: 'unique-ref-123',
+    testing: true,
+);
+
+// Generate unique ref_id
+use AndiSiahaan\Digiflazz\Services\TransactionService;
+$refId = TransactionService::generateRefId('TRX');
+```
+
+### Postpaid Bill (Pascabayar)
+
+```php
+// Step 1: Inquiry (check bill)
+$inquiry = $client->inqPasca([
+    'buyer_sku_code' => 'pln',
+    'customer_no' => '530000000001',
+    'ref_id' => 'ref-001',
+    'testing' => true,
 ]);
-print_r($pay);
+
+// Step 2: Pay the bill
+if ($inquiry['data']['status'] === 'Sukses') {
+    $payment = $client->payPasca([
+        'buyer_sku_code' => 'pln',
+        'customer_no' => '530000000001',
+        'ref_id' => 'ref-001',
+        'testing' => true,
+    ]);
+}
+
+// Check status
+$status = $client->statusPasca([...]);
 ```
 
-## Examples
+### PLN Inquiry
 
-See `examples/` for small scripts that exercise prepaid and postpaid flows:
+```php
+// Quick inquiry
+$pln = $client->inquiryPln('530000000001');
 
-- `examples/integration-prepaid-test.php` — multiple prepaid test-cases
-- `examples/integration-postpaid-test.php` — PLN inquiry + payment flows
-- `examples/integration-pay-pasca-only.php` — pay-pasca only runner
-
-Run an example (PowerShell):
-
-```powershell
-$env:DIGIFLAZZ_USERNAME='your_username'; $env:DIGIFLAZZ_APIKEY='your_api_key'; php .\\examples\\integration-prepaid-test.php
+// Check if valid
+$isValid = $client->pln()->isValidCustomer('530000000001');
 ```
 
-## Running tests
+### Deposit Request
 
-Unit tests use PHPUnit and are mocked to avoid calling the real API. Run:
+```php
+$deposit = $client->requestDeposit([
+    'amount' => 1000000,
+    'Bank' => 'BCA',
+    'owner_name' => 'John Doe',
+]);
 
-```powershell
-vendor\\bin\\phpunit --testdox
+// Or using typed method
+$deposit = $client->deposit()->withdraw(1000000, 'BCA', 'John Doe');
 ```
 
-## Notes & troubleshooting
+## Error Handling
 
-- IP whitelist: Digiflazz may require your public IP to be whitelisted for integration tests. If you see an error about IP or permission, contact Digiflazz support and provide your public IP.
-- Keep credentials out of version control. Use `.env` + `.gitignore`.
-- This client is intentionally minimal — extend or submit PRs for new endpoints.
+The library throws specific exceptions for different error types:
+
+```php
+use AndiSiahaan\Digiflazz\Exceptions\DigiflazzException;
+use AndiSiahaan\Digiflazz\Exceptions\ApiException;
+use AndiSiahaan\Digiflazz\Exceptions\HttpException;
+use AndiSiahaan\Digiflazz\Exceptions\ValidationException;
+
+try {
+    $result = $client->topup([...]);
+} catch (ValidationException $e) {
+    // Missing or invalid parameters
+    echo "Validation error: " . $e->getMessage();
+    print_r($e->getErrors());
+} catch (ApiException $e) {
+    // API returned an error
+    echo "API error: " . $e->getMessage();
+    echo "Error code: " . $e->getErrorCode();
+    
+    if ($e->isInsufficientBalance()) {
+        echo "Please top up your balance";
+    }
+    
+    if ($e->isRetryable()) {
+        // Safe to retry
+    }
+} catch (HttpException $e) {
+    // Network or HTTP error
+    echo "HTTP error: " . $e->getMessage();
+    echo "Status code: " . $e->getStatusCode();
+} catch (DigiflazzException $e) {
+    // Base exception (catch all library exceptions)
+    echo "Error: " . $e->getMessage();
+}
+```
+
+## Service Classes
+
+Direct access to service classes for more control:
+
+```php
+$balanceService = $client->balance();
+$transactionService = $client->transaction();
+$priceListService = $client->priceList();
+$depositService = $client->deposit();
+$plnService = $client->pln();
+```
+
+## Development
+
+### Install Dependencies
+
+```bash
+composer install
+```
+
+### Run Tests
+
+```bash
+# All tests
+composer test
+
+# With coverage
+composer test:coverage
+```
+
+### Static Analysis
+
+```bash
+composer analyse
+```
+
+### Code Style
+
+```bash
+# Check code style
+composer cs-check
+
+# Fix code style
+composer cs-fix
+```
+
+## Architecture
+
+```
+src/
+├── Config/
+│   └── Configuration.php       # Immutable configuration
+├── Contracts/
+│   ├── ClientInterface.php     # Client contract
+│   ├── HttpClientInterface.php # HTTP abstraction
+│   └── ServiceInterface.php    # Service contract
+├── Exceptions/
+│   ├── DigiflazzException.php  # Base exception
+│   ├── ApiException.php        # API errors
+│   ├── AuthenticationException.php
+│   ├── HttpException.php       # HTTP errors
+│   └── ValidationException.php # Validation errors
+├── Http/
+│   └── GuzzleHttpClient.php    # Guzzle adapter
+├── Services/
+│   ├── Concerns/
+│   │   └── ValidatesParameters.php
+│   ├── AbstractService.php     # Base service
+│   ├── BalanceService.php
+│   ├── DepositService.php
+│   ├── PlnService.php
+│   ├── PriceListService.php
+│   └── TransactionService.php
+├── Support/
+│   └── Signature.php           # Signature generator
+└── DigiflazzClient.php         # Main client
+```
+
+## Notes
+
+- **IP Whitelist**: Digiflazz requires your server IP to be whitelisted. Contact Digiflazz support.
+- **Testing Mode**: Use `testing: true` for sandbox transactions.
+- **Credentials**: Never commit credentials. Use environment variables or `.env` file.
 
 ## License
 
-MIT — see `LICENSE` file.
+MIT - see [LICENSE](LICENSE) file.

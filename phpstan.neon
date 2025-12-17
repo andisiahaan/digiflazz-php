@@ -1,0 +1,17 @@
+includes:
+    - vendor/phpstan/phpstan/conf/bleedingEdge.neon
+
+parameters:
+    level: 8
+    paths:
+        - src
+    excludePaths:
+        - src/*/Tests/*
+        - tests/*
+    reportUnmatchedIgnoredErrors: false
+    checkMissingIterableValueType: true
+    checkGenericClassInNonGenericObjectType: true
+
+    ignoreErrors:
+        # Allow dynamic property access in service caching
+        - '#^Parameter \#1 \$class of method .+::getService\(\) expects class-string<T of object>, string given\.$#'

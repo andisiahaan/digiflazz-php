@@ -1,51 +1,65 @@
 <?php
 
+declare(strict_types=1);
+
 namespace AndiSiahaan\Digiflazz\Services;
 
-use AndiSiahaan\Digiflazz\DigiflazzClient;
-
-class PriceListService
+/**
+ * Service for retrieving product price lists.
+ */
+class PriceListService extends AbstractService
 {
-    private DigiflazzClient $client;
-
-    public function __construct(DigiflazzClient $client)
-    {
-        $this->client = $client;
-    }
-
     /**
-     * Request price list for prepaid products.
-     * Optional filters: code, category, brand, type
+     * Get prepaid product price list.
      *
-     * @param array $filters
-     * @return array
+     * @param array<string, mixed> $filters Optional filters (code, category, brand, type)
+     * @return array<string, mixed> Price list data
      */
     public function prepaid(array $filters = []): array
     {
-        $payload = array_merge([
+        $payload = $this->buildPayload('pricelist', array_merge([
             'cmd' => 'prepaid',
-            'username' => $this->client->getUsername(),
-            'sign' => $this->client->signature('pricelist'),
-        ], $filters);
+        ], $filters));
 
-    return $this->client->request($payload, 'price-list');
+        return $this->request($payload, 'price-list');
     }
 
     /**
-     * Request price list for pascabayar products.
-     * Optional filters: code, brand
+     * Get postpaid (pascabayar) product price list.
      *
-     * @param array $filters
-     * @return array
+     * @param array<string, mixed> $filters Optional filters (code, brand)
+     * @return array<string, mixed> Price list data
      */
     public function pasca(array $filters = []): array
     {
-        $payload = array_merge([
+        $payload = $this->buildPayload('pricelist', array_merge([
             'cmd' => 'pasca',
-            'username' => $this->client->getUsername(),
-            'sign' => $this->client->signature('pricelist'),
-        ], $filters);
+        ], $filters));
 
-        return $this->client->request($payload, 'price-list');
+        return $this->request($payload, 'price-list');
+    }
+
+    /**
+     * Alias for pasca() method.
+     *
+     * @param array<string, mixed> $filters
+     * @return array<string, mixed>
+     */
+    public function postpaid(array $filters = []): array
+    {
+        return $this->pasca($filters);
+    }
+
+    /**
+     * Get all price lists (prepaid and postpaid).
+     *
+     * @return array{prepaid: array<string, mixed>, postpaid: array<string, mixed>}
+     */
+    public function all(): array
+    {
+        return [
+            'prepaid' => $this->prepaid(),
+            'postpaid' => $this->pasca(),
+        ];
     }
 }

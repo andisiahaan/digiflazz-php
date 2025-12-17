@@ -1,15 +1,29 @@
-vendor/
-.env
-/.idea
-/.vscode
-/composer.lock
-/.DS_Store
-.phpunit.result.cache
+# Cache and tool files
+.php-cs-fixer.cache
+.phpunit.cache/
 coverage/
-build/
-.env.*
-examples/.env
-.cache/
-composer.phar
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+/vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
 Thumbs.db
-tests/_output/
+
+# PHPStorm
+*.iml
+
+# Composer
+composer.lock
